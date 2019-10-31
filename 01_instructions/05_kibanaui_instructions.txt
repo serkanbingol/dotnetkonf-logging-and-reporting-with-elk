@@ -1,0 +1,90 @@
+Step 1- Setup Mappings for GeoIP Location and Refresh Index for Kibana UI
+
+# In Kibana UI => Management => Index Management => Index Templates => Create a Template => Name  => geoip-template
+# Index patterns => filebeat-*
+# Add Mappings 
+
+{
+  "dynamic_templates": [
+    {
+      "message_field": {
+        "path_match": "message",
+        "mapping": {
+          "norms": false,
+          "type": "text"
+        },
+        "match_mapping_type": "string"
+      }
+    },
+    {
+      "string_fields": {
+        "mapping": {
+          "norms": false,
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "ignore_above": 256,
+              "type": "keyword"
+            }
+          }
+        },
+        "match_mapping_type": "string",
+        "match": "*"
+      }
+    }
+  ],
+  "properties": {
+    "@timestamp": {
+      "type": "date"
+    },
+    "geoip": {
+      "dynamic": true,
+      "properties": {
+        "ip": {
+          "type": "ip"
+        },
+        "latitude": {
+          "type": "half_float"
+        },
+        "location": {
+          "type": "geo_point"
+        },
+        "longitude": {
+          "type": "half_float"
+        }
+      }
+    },
+    "@version": {
+      "type": "keyword"
+    }
+  }
+}
+
+# In Kibana UI => Management => Index Management => Indices => Select Indice Created
+# Manage index => Refresh index
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2- Visualize Kibana UI Indexes
+
+## HTTP Client Coordinate Map
+# Metric => Aggregation=Count, Buckets => Aggregation=Geohash, Field=geoip.location, Options => Map Type=Shaded Circle Markers
+
+## HTTP Response Pie Chart Visualization 
+# Slice Size=> Aggregation=Count, Buckets => Split Slices=Aggregation=Terms + Field=response
+
+## NGINX Average Byte Visualization
+# Y-axis=> Aggregation=Average+ Fields=bytes, Buckets => X-axis Aggregation=Date Histogram + Field=timestamp, Minimum Interval=Minute
+
+## CREATE DASHBOARD
+# Add Created Visualizations
+
+
+---------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+

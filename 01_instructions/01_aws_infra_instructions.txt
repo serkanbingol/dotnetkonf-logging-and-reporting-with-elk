@@ -1,0 +1,76 @@
+Step 1- Creating a VPC
+
+## REGION SEÇİMİ
+
+# Bu uygulamada region olarak Ireland Region (eu-west-1) kullanılmıştır. Bu region içinde toplamda 3 adet Availability Zone bulunmaktadır. (eu-west-1a , eu-west-1b , eu-west-1c)
+
+## VPC OLUŞTURMA :
+
+# 1) Console üzerinde VPC hizmeti seçilerek sol menü üzerinden "Your VPC" alanı seçilir.
+# 2) "Create VPC" buttonu ile "DOTNETKONF-VPC" isminde 10.0.0.0/16 CIDR IPv4 tanımlamaları yapılır ve "Create" buttonu tıklanır.
+# 3) Dashboard üzerinde "Webinar-VPC" seçilir. "Actions" buttonu ile "Edit DNS hostnames" seçilir. DNS hostnames enable aktif hale getirilir.
+
+## INTERNET GATEWAY OLUŞTURMA :
+
+# 1) Console üzerinde VPC hizmeti seçilerek sol menü üzerinden "Internet Gateways" alanı seçilir.
+# 2) "Create internet gateway" buttonu ile "DOTNETKONF-IG" isminde bir gateway oluşturulur.
+# 3) Dashboard üzerinde "DOTNETKONF-IG" seçilir. "Actions" buttonu ile "Attach to VPC" seçilir. Dropdown üzerinden DOTNETKONF-VPC seçilerek Attach buttonu ile atama gerçekleştirilir.
+
+## SUBNETLERİ OLUŞTURMA :
+
+# 1) Console üzerinde VPC hizmeti seçilerek sol menü üzerinden "Subnets" alanı seçilir.
+# 2) "Create Subnet" buttonu ile Name tag= DOTNETKONF-Public Subnet 1, VPC= DOTNETKONF-VPC, Avalability Zone= eu-west-1a,  IPv4 CIDR block= 10.0.0.0/16 atamaları yapılır ve  "Create" buttonu tıklanır.
+# 3) Dashboard üzerinde "DOTNETKONF-Public Subnet 1" seçilir. "Actions" buttonu ile "Modify auto-assign IP settings" seçilir. Auto-assign IPv4 enable aktif hale getirilir.
+
+## ROOT TABLELARI OLUŞTURMA :
+
+# 1) Console üzerinde VPC hizmeti seçilerek sol menü üzerinden "Route Tables" alanı seçilir.VPC ID DOTNETKONF-VPC olan kayıt seçilerek, Name alanı üzerindeki kalem simgesi tıklanarak "DOTNETKONF-Public Route Table" ismi atanır.
+# 2) Dashboard üzerinde "DOTNETKONF-Public Route Table" seçilir. Açılan alt menü üzerinde "Routes" tabı seçilir.Edit Routes buttonu tıklanarak Add Routes ile Destionation= 0.0.0.0/0 ve Target=Internet Gateway seçilerek "DOTNETKONF-IG" ataması yapılır. Save Routes buttonu ile kayıt gerçekleştirilir.
+# 3) DOTNETKONF-Public Route Table alt menüsü üzerinde "Subnet Associations" tabı seçilir. Edit subnet associations buttonu ile DOTNETKONF-Public Subnet 1 ataması yapılarak save buttonu ile kayıt işlemi gerçekleştirilir.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Step 2- Creating Security Groups
+
+# 1) Console üzerinde VPC hizmeti seçilerek sol menü üzerinden "Security Groups" alanı seçilir.
+# 2) "Create security group" buttonu ile Security group name= DOTNETKONF-public,Description= DOTNETKONF-public, VPC= DOTNETKONF-VPC atamaları yapılır ve  "Create" buttonu tıklanır.
+# 3) Açılan menü üzerinden group name DOTNETKONF-Public olan kayıt seçilerek Name alanı üzerindeki kalem simgesi tıklanarak "DOTNETKONF-WEB-SG" ismi atanır.
+# 4) DOTNETKONF-Webapp-SG seçilerek alt menü üzerinden Inbound Rules tabı seçilir Edit rules => Add Rule tıklanarak
+ Type= HTTP, Protocol= TCP, Port= 80, Source=Custom + Type= HTTPS, Protocol= TCP, Port= 443, Source=Custom + Type= SSH, Protocol= TCP, Port= 22, Source=Custom seçilerek Save rules buttonu ile ilgili Port atamaları yapılır.
+# 5) "Create security group" buttonu ile Security group name= DOTNETKONF-Private, Description= DOTNETKONF-Private, VPC= DOTNETKONF-VPC atamaları yapılır ve "Create" buttonu tıklanır.
+# 6) Açılan menü üzerinden group name DOTNETKONF-Private olan kayıt seçilerek Name alanı üzerindeki kalem simgesi tıklanarak "DOTNETKONF-ELK-SG" ismi atanır.
+# 7) DOTNETKONF-ELK-SG seçilerek alt menü üzerinden Inbound Rules tabı seçilir Edit rules => Add Rule tıklanarak
+Type= HTTP, Protocol= TCP, Port= 80, Source=Custom + Type= Custom TCP Rule, Protocol= TCP, Port= 5443, Source=Custom + Type= SSH, Protocol= TCP, Port= 22, Source=Custom +  Type= Custom TCP Rule, Protocol= TCP, Port= 9200, Source=Custom seçilerek ilgili kutucuğa DOTNETKONF-WEB-SG atamaları yapılarak Save rules buttonu ile ilgili Port ataması yapılır.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3- Creating EC2 Instances
+
+# 1) Console üzerinde EC2 hizmeti seçilerek sol menü üzerinden Key-Pairs seçilir.
+# 2) Create Key Pair buttonu tıklanır. Name olarak DOTNETKONF-KP tanımlaması yapılır. İlgili pem dosyası locale kaydedilir.
+
+# 3) Console üzerinde EC2 hizmeti seçilerek açılan ekranda Launch Instance buttonu tıklanır.
+# 4) Sırası ile Ubuntu Server 18.04 seçilir.Type olarak t2.micro seçilir ve Next:Configure Instance Details tıklanır.
+# 5) Açılan ekran üzerinde Network= DOTNETKONF-VPC, Subnet= DOTNETKONF-Public Subnet 1 seçilir
+# 6) Sırası ile Add Storage, Next: Add Tags buttonları değişiklik yapılmadan tıklanır. Açılan ekran üzerinde Key=Name, Value= DOTNETKONF-WEB-EC2 tanımlamaları yapılarak Next: Configure Security Group buttonu tıklanır.
+# 7) Açılan ekran üzerinde select an existing security group radio button seçilir. DOTNETKONF-WEB-SG security group tıklanarak Review and Launch Buttonu tıklanır.Launch buttonu tıklanır.
+# 8) Açılan modal üzerinden select an existing key pair ile DOTNETKONF-KP key Pair seçilir ve Launch Instances buttonu tıklanarak EC2 oluşturma işlemi tamamlanır.
+# 9) View Instances diyerek oluşturulan Webserver'a ait detayları görebiliriz.
+
+# 10) Console üzerinde EC2 hizmeti seçilerek açılan ekranda Launch Instance buttonu tıklanır.
+# 11) Sırası ile Ubuntu Server 18.04 seçilir.Type olarak t2.medium seçilir ve Next:Configure Instance Details tıklanır.
+# 12) Açılan ekran üzerinde Network= DOTNETKONF-VPC, Subnet= DOTNETKONF-Public Subnet 1 seçilir
+# 13) Sırası ile Add Storage 30GB, Next: Add Tags buttonları değişiklik yapılmadan tıklanır. Açılan ekran üzerinde Key=Name, Value= DOTNETKONF-ELK-EC2 tanımlamaları yapılarak Next: Configure Security Group buttonu tıklanır.
+# 14) Açılan ekran üzerinde select an existing security group radio button seçilir. DOTNETKONF-ELK-SG security group tıklanarak Review and Launch Buttonu tıklanır.Launch buttonu tıklanır.
+# 15) Açılan modal üzerinden select an existing key pair ile DOTNETKONF-KP key Pair seçilir ve Launch Instances buttonu tıklanarak EC2 oluşturma işlemi tamamlanır.
+# 16) View Instances diyerek oluşturulan Webserver'a ait detayları görebiliriz.
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+

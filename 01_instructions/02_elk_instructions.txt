@@ -1,0 +1,200 @@
+Step 1- Update System
+
+sudo apt update
+sudo apt -y upgrade
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2 – Install Java JDK on Ubuntu
+
+sudo add-apt-repository ppa:linuxuprising/java
+sudo apt-get update
+sudo apt-get install oracle-java13-installer
+sudo apt-get install oracle-java13-set-default
+sudo java -version
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3 – Control and Set JAVA_HOME Path on Ubuntu
+
+sudo echo $JAVA_HOME
+
+export J2SDKDIR=/usr/lib/jvm/java-13-oracle
+export J2REDIR=/usr/lib/jvm/java-13-oracle
+export PATH=$PATH:/usr/lib/jvm/java-13-oracle/bin:/usr/lib/jvm/java-13-oracle/db/bin
+export JAVA_HOME=/usr/lib/jvm/java-13-oracle
+export DERBY_HOME=/usr/lib/jvm/java-13-oracle/db
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 4 – Installing and Configuring Elasticsearch
+
+Elasticsearch 7.x
+sudo wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+sudo apt-get install apt-transport-https
+sudo echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+sudo apt-get update
+sudo apt-get install elasticsearch
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 5 - Configure Elasticsearch
+
+sudo vim /etc/elasticsearch/elasticsearch.yml => network.host: localhost & http.port: 9200
+sudo vim /etc/elasticsearch/jvm.options  => Xms512m & Xmx512m
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 6 - Start Elasticsearch & Check Elasticsearch
+
+sudo systemctl enable elasticsearch.service
+sudo systemctl start elasticsearch.service
+sudo systemctl status elasticsearch.service
+sudo curl -XGET 'localhost:9200/?pretty'
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 7 Install Kibana
+
+sudo apt-get install kibana
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 8 Configure Kibana 
+
+sudo vim /etc/kibana/kibana.yml => server.port: 5601 & server.host: "localhost" & elasticsearch.host: ["http://localhost:9200"]
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 9 Start Kibana & Check Kibana
+
+sudo systemctl enable kibana.service
+sudo systemctl start kibana.service
+sudo systemctl status kibana.service
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 10 Install Ngnix & Configure Deafult Site to Kibana
+
+sudo apt-get install nginx apache2-utils
+sudo vim /etc/nginx/sites-available/default => Remove ggdG all then add code below
+
+server {
+    listen 80;
+ 
+    server_name [AWS-EC2:Public DNS (IPv4) address];
+ 
+    auth_basic "Restricted Access";
+    auth_basic_user_file /etc/nginx/.elkusersecret;
+ 
+    location / {
+        proxy_pass http://localhost:5601;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 11 Configure Credentials for Nginix
+
+sudo htpasswd -c /etc/nginx/.elkusersecret elkusr => add password & confirm password
+sudo nginx -t
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 12 Start Nginx & Check Nginx
+
+sudo systemctl enable nginx.service
+sudo systemctl restart nginx.service
+sudo systemctl status nginx.service
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 13 Install Logstash & OPTIONAL [Create SSL for Filebeat Client]
+
+sudo apt-get install logstash
+
+OPTIONAL SSL For Filebeat Client
+// sudo vim /etc/hosts
+// [EC2-Public IP] [EC2-DNS] elk-server
+
+// sudo cd /etc/logstash/
+// sudo mkdir ssl
+// sudo openssl req -subj '/CN=[server name]/' -x509 -days 3650 -batch -nodes -newkey rsa:2048 -keyout ssl/logstash-forwarder.key -out ssl/logstash-forwarder.crt
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Step 14 Install GeoIP Databases for Logstash
+
+cd /etc/logstash/
+sudo wget http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.mmdb.gz
+sudo gunzip GeoLite2-City.mmdb.gz
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Step 15 Configure Logstash
+
+sudo vim /etc/logstash/logstash.yml
+path.data: /var/lib/logstash
+path.config: /etc/logstash/conf.d
+path.logs: /var/log/logstash
+
+cd /etc/logstash/conf.d
+sudo vim filebeat-nginx.conf => add code below
+
+input {
+    beats {
+        host => "0.0.0.0"
+        port => 5443
+    }
+}
+
+filter {
+ grok {
+   match => [ "message" , "%{COMBINEDAPACHELOG}+%{GREEDYDATA:extra_fields}"]
+   overwrite => [ "message" ]
+ }
+ mutate {
+   convert => ["response", "integer"]
+   convert => ["bytes", "integer"]
+   convert => ["responsetime", "float"]
+ }
+ geoip {
+   source => "clientip"
+   target => "geoip"
+   add_tag => [ "nginx-geoip" ]
+ }
+ date {
+   match => [ "timestamp" , "dd/MMM/YYYY:HH:mm:ss Z" ]
+   remove_field => [ "timestamp" ]
+ }
+}
+
+output {
+ elasticsearch {
+   hosts => ["localhost:9200"]
+   index => "nginxlogs-%{+YYYY.MM.dd}"
+ }
+ stdout { codec => rubydebug }
+}
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 16 Start Logstash & Check Logstash
+
+sudo -u logstash /usr/share/logstash/bin/logstash --path.settings /etc/logstash -t => wait for Configuration OK
+
+sudo systemctl enable logstash.service
+sudo systemctl start logstash.service
+sudo systemctl status logstash.service
+
+sudo vim /var/log/logstash/logstash-plain.log 
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 
+Step 17 Go To  02_filebeat_instructions.txt
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+

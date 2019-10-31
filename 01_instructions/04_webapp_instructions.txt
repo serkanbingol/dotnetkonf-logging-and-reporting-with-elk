@@ -1,0 +1,97 @@
+Step 1- Install .Net Core 2.1.1 Runtime On Linux
+
+sudo wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+sudo add-apt-repository universe
+sudo apt-get update
+sudo apt-get install apt-transport-https
+sudo apt-get update
+sudo apt-get install aspnetcore-runtime-2.1=2.1.1-1
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2- Install Nginx
+
+sudo apt-get install nginx apache2-utils
+sudo vim /etc/nginx/sites-available/default => Remove all (ggdG) then add code below
+
+server {
+ listen 80;
+ location / {
+ proxy_pass http://localhost:5000;
+ proxy_http_version 1.1;
+ proxy_set_header Upgrade $http_upgrade;
+ proxy_set_header Connection keep-alive;
+ proxy_set_header Host $host;
+ proxy_cache_bypass $http_upgrade;
+ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+ proxy_set_header X-Forwarded-Proto $scheme;
+ }
+}
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3- Publish .netcore Application on Local & Transfer with Filezilla
+
+## ON LINUX WEBAPP SERVER
+cd /var/www => sudo mkdir elk-webapp
+sudo chown -R ubuntu /var/www/elk-webapp
+sudo chmod -R 755 /var/www/elk-webapp
+
+## ON LOCAL DEVELOPMENT ENVIRONMENT
+# Clone and Run MiniBlog Application 
+git clone https://github.com/madskristensen/Miniblog.Core.git
+
+
+# Open Application sln Folder
+dotnet publish -c Release
+
+# Open Filezilla => Edit => Settings => SFTP => Add key file => select ec2 pem file
+# Open Filezilla => Site Manager => New Site => host=ec2 public dns , Logon Type=normal , User=ubuntu , password null => connect
+# Transfer all published local application files to EC2 /var/www/elk-webapp
+
+## ON LINUX WEBAPP SERVER
+# Restart Nginx Server
+sudo systemctl enable nginx.service
+sudo systemctl start nginx.service
+
+# Test Application
+cd /var/www/elk-webapp => dotnet Miniblog.Core.dll => Browse webapp EC2 public DNS
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 4- Host .netcore Application as Service to Nginx
+
+## ON LINUX WEBAPP SERVER
+# Create Service in Kestrel for .netcore application 
+sudo vim /etc/systemd/system/kestrel-miniblog.service => add code below
+
+[Unit]
+Description=Example .NET Web API App running on Ubuntu
+[Service]
+WorkingDirectory=/var/www/elk-webapp
+ExecStart=/usr/bin/dotnet /var/www/elk-webapp/Miniblog.Core.dll
+Restart=always
+# Restart service after 10 seconds if the dotnet service crashes:
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=dotnet-example
+User=root
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+[Install]
+WantedBy=multi-user.target
+
+# Start .netcore applicaiton Service
+sudo systemctl enable kestrel-miniblog.service
+sudo systemctl start kestrel-miniblog.service
+sudo systemctl status kestrel-miniblog.service
+
+# Restart Nginx Server
+sudo systemctl stop nginx.service
+sudo systemctl start nginx.service
+
+# Test Application => browse webapp EC2 public dns
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

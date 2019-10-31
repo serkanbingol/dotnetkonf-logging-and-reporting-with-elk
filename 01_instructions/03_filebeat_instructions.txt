@@ -1,0 +1,65 @@
+Step 1- Update System
+
+sudo apt update
+sudo apt -y upgrade
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2 – Install Filebeat Client
+
+sudo wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+sudo apt-get install apt-transport-https
+sudo echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-7.x.list
+sudo apt-get update
+sudo apt-get install filebeat
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3 – Configure Filebeat Client
+
+sudo vim /etc/filebeat/filebeat.yml
+
+filebeat.inputs:
+   enabled: true
+   paths:
+     - /var/log/nginx/*.log
+
+# UNCOMMENT LOGSTASH
+output.logstash:
+  # The Logstash hosts
+  hosts: ["{EC2-Public IP}:5443"]
+  # optional for ssl
+  # ssl.certificate_authorities: ["/etc/filebeat/ssl/logstash-forwarder.crt"]
+
+# COMMENT ELASTICSEARCH
+#output.elasticsearch:
+  # Array of hosts to connect to.
+  # hosts: ["localhost:9200"]
+
+
+# Optional For ssl
+# cd /etc/filebeat
+# sudo mkdir ssl
+# cd ssl
+# sudo vim /etc/filebeat/ssl/logstash-forwarder.crt => copy and past here all from ELK SERVER /etc/logstash/ssl/logstash-forwarder.crt 
+
+# Optional For Modules
+# sudo filebeat modules enable system
+# sudo filebeat modules enable nginx
+# sudo filebeat modules list
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 4 – Start Filebeat Client & Check Filebeat 
+
+sudo systemctl enable filebeat
+sudo systemctl start filebeat
+sudo systemctl status filebeat
+sudo filebeat -e
+
+# On ELK Server 
+sudo curl -XGET 'http://localhost:9200/nginxlogs-*/_search?pretty' 
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+

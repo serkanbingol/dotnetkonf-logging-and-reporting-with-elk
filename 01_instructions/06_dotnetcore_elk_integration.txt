@@ -1,0 +1,266 @@
+Step 1- Open Elasticsearch Public on ELK Server
+# open 9200 port on DOTNETKONF-ELK-SG public
+transport.host: localhost
+transport.tcp.port: 9300
+http.port: 9200
+network.bind_host: 0.0.0.0
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 2- Installing NEST NuGet Package
+
+## Inside Project Folder 
+dotnet add package NEST
+code .
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 3- Add Elacticsearch Configuration to appsettings.json
+
+"elasticsearch": {
+        "index": "miniblog",
+        "url": "http://aws-elk-ip:9200/"
+    }
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 4- Create ElasticsearchExtensions Class
+
+public static class ElasticsearchExtensions
+{
+    public static void AddElasticsearch(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        var url = configuration["elasticsearch:url"];
+        var defaultIndex = configuration["elasticsearch:index"];
+
+        var settings = new ConnectionSettings(new Uri(url))
+            .DefaultIndex(defaultIndex)
+            .DefaultMappingFor<Post>(m => m
+                .Ignore(p => p.IsPublished)
+                .PropertyName(p => p.ID, "id")
+            )
+            .DefaultMappingFor<Comment>(m => m
+                .Ignore(c => c.Email)
+                .Ignore(c => c.IsAdmin)
+                .PropertyName(c => c.ID, "id")
+            );
+
+        var client = new ElasticClient(settings);
+
+        services.AddSingleton<IElasticClient>(client);
+    }
+}
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 5- Add Service to Startup.cs ConfigureServices
+
+ services.AddElasticsearch(Configuration);
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 6- Index Blog Files in Services/FileBlogService.cs => SavePost Method & Delete Index in DeletePost
+
+# comment where condition to get all created posts
+
+# add private _elasticClient variable
+private IElasticClient _elasticClient;
+
+# update Constructor method
+
+public FileBlogService(IElasticClient elasticClient, IHostingEnvironment env, IHttpContextAccessor contextAccessor)
+{
+    _elasticClient = elasticClient;
+    _folder = Path.Combine(env.WebRootPath, "posts");
+    _contextAccessor = contextAccessor;
+
+    Initialize();
+}
+
+# Save Index
+public async Task SavePost(Post post)
+{
+    string filePath = GetFilePath(post);
+    post.LastModified = DateTime.UtcNow;
+
+    // Add this line:
+    bool postExists = File.Exists(filePath);
+
+    // ... rest of the method functionality
+
+    // Add these lines at the end:
+    if (postExists)
+        await _elasticClient.UpdateAsync<Post>(post, u => u.Doc(post));
+    else
+        await _elasticClient.IndexDocumentAsync(post);
+}
+
+# Delete Index
+public async Task DeletePost(Post post)
+{
+    string filePath = GetFilePath(post);
+
+    if (File.Exists(filePath))
+        File.Delete(filePath);
+
+    await _elasticClient.DeleteAsync<Post>(post);
+
+    if (_cache.Contains(post))
+        _cache.Remove(post);
+}
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 7- Create Search Controller for Re-indexing Created Posts
+
+public class SearchController : Controller
+{
+    private readonly IBlogService _blogService;
+    private readonly IElasticClient _elasticClient;
+    private readonly IOptionsSnapshot<BlogSettings> _settings;
+
+    public SearchController(IBlogService blogService, IElasticClient elasticClient, IOptionsSnapshot<BlogSettings> settings)
+    {
+        _blogService = blogService;
+        _elasticClient = elasticClient;
+        _settings = settings;
+    }
+
+    [Authorize]
+    [Route("/search/reindex")]
+    public async Task<IActionResult> ReIndex()
+    {
+        await _elasticClient.DeleteByQueryAsync<Post>(q => q.MatchAll());
+
+        var allPosts = (await _blogService.GetPosts(int.MaxValue)).ToArray();
+
+        foreach (var post in allPosts)
+        {
+            await _elasticClient.IndexDocumentAsync(post);
+        }
+
+        return Ok($"{allPosts.Length} post(s) reindexed");
+    }
+}
+
+# Reindex If App Has Created Posts
+
+http://llk-dns/search/reindex
+
+# Check Kibana Re-index
+# Kibana => Dev Tools
+
+GET miniblog/_search
+{
+    "query": { "match_all": {} }
+}
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 8- Add search Query to Searchcontroller 
+
+# Add Properties to Blog settings => BlogSettings.cs
+public string Name { get; set; } = "MiniBlogElasticsearch";
+public string Description { get; set; } = "A short description of the blog";
+
+[Route("/search")]
+public async Task<IActionResult> Find(string query, int page = 1, int pageSize = 5)
+{
+    var response = await _elasticClient.SearchAsync<Post>(
+        s => s.Query(q => q.QueryString(d => d.Query(query)))
+            .From((page - 1) * pageSize)
+            .Size(pageSize));
+
+    ViewData["Title"] = _settings.Value.Name + " - Search Results";
+    ViewData["Description"] = _settings.Value.Description;
+
+    if (!response.IsValid)
+    {
+        // We could handle errors here by checking response.OriginalException or response.ServerError properties
+        return View("Results", new Post[] { });
+    }
+
+    if (page > 1)
+        ViewData["prev"] = GetSearchUrl(query, page - 1, pageSize);
+    if (response.IsValid && response.Total > page * pageSize)
+        ViewData["next"] = GetSearchUrl(query, page + 1, pageSize);
+
+    return View("Results", response.Documents);
+}
+
+private static string GetSearchUrl(string query, int page, int pageSize)
+{
+    return $"/search?query={Uri.EscapeDataString(query ?? "")}&page={page}&pagesize={pageSize}/";
+}
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 9- Add search form to layout & update header
+
+<header class="siteheader">
+    <div class="container">
+        <p itemprop="name"><a href="~/">@settings.Value.Name</a></p>
+        By <span itemprop="author">@settings.Value.Owner</span>
+    </div>
+    <!-- Insert search form here: -->
+    <form class="container" asp-action="Find" asp-controller="Search" method="get">
+        <input type="search" name="query" placeholder="Search..." value="@ViewContext.HttpContext.Request.Query["query"]" />
+    </form>
+</header>
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Step 10- Add Search Result View
+# In Views Create=> Search/Results.cshtml
+
+@model IEnumerable<Post>
+<div class="container search-results">
+    <h1>Search results</h1>
+
+    @if (!Model.Any())
+    {
+        <p>Nothing found for: <em>@ViewContext.HttpContext.Request.Query["query"]</em></p>
+    }
+
+    @foreach (var post in Model)
+    {
+        <article class="post">
+            <header>
+                <h2><a asp-controller="Blog" asp-action="Post" asp-route-slug="@post.Slug">@post.Title</a></h2>
+                <time datetime="@post.PubDate.ToString("s")" itemprop="datePublished">Published @post.PubDate.ToString("MMM d, yyyy")</time>
+                @if (User.Identity.IsAuthenticated)
+                {
+                    <a asp-controller="Blog" asp-action="edit" asp-route-id="@post.ID" title="Edit the post">Edit post</a>
+                }
+            </header>
+            <p>@post.Excerpt</p>
+        </article>
+    }
+
+    <nav class="pagination" aria-label="Pagination">
+        @if (ViewData["prev"] != null)
+        {
+            <a rel="prev" href="@ViewData["prev"]" title="Previous results">&laquo; Previous</a>
+        }
+        @if (ViewData["next"] != null)
+        {
+            <a rel="next" href="@ViewData["next"]" title="Next results">Next &raquo;</a>
+        }
+        <br /><br />
+
+        @section Head {
+            @if (ViewData["prev"] != null)
+            {
+                <link rel="prev" href="@ViewData["prev"]" />
+            }
+            @if (ViewData["next"] != null)
+            {
+                <link rel="next" href="@ViewData["next"]" />
+            }
+        }
+    </nav>
+</div>
+
+
