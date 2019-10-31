@@ -1,7 +1,7 @@
 Step 1- Setup Mappings for GeoIP Location and Refresh Index for Kibana UI
 
 # In Kibana UI => Management => Index Management => Index Templates => Create a Template => Name  => geoip-template
-# Index patterns => filebeat-*
+# Index patterns => nginxlogs-*
 # Add Mappings 
 
 {

@@ -1,5 +1,7 @@
 Step 1- Open Elasticsearch Public on ELK Server
 # open 9200 port on DOTNETKONF-ELK-SG public
+
+# configure elasticsearch.yml
 transport.host: localhost
 transport.tcp.port: 9300
 http.port: 9200
